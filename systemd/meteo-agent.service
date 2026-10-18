@@ -1,0 +1,73 @@
+[Unit]
+Description=Weather agent with Telegram notifications
+Documentation=file:/opt/meteo-agent/README.md
+After=network-online.target
+Wants=network-online.target
+
+# A tight crash loop is a bug, not a transient: stop and make it visible.
+# These belong in [Unit]: under [Service] systemd silently ignores them.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+# ...and "make it visible" means a Telegram message: without it, a stopped
+# agent is indistinguishable from a period with no alerts.
+OnFailure=meteo-agent-failure.service
+
+[Service]
+Type=simple
+User=meteo
+Group=meteo
+
+# Secrets live only here, and this file is 0600 root:meteo.
+EnvironmentFile=/etc/meteo-agent/meteo-agent.env
+ExecStart=/opt/meteo-agent/venv/bin/meteo-agent -c /etc/meteo-agent/config.toml run
+
+# The agent is long-running and must survive missing network, feeds being down, NUC reboots.
+Restart=always
+RestartSec=30s
+# A short stop timeout: the cycle sleeps on an Event, it exits immediately.
+TimeoutStopSec=20s
+KillSignal=SIGTERM
+
+# The journal already has timestamps, the program doesn't repeat them.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=meteo-agent
+
+# Hardening: the process only does outbound HTTP and writes a SQLite file.
+# It has no reason to see anything else.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# AF_NETLINK isn't an extra: glibc's getaddrinfo() uses it to enumerate
+# interfaces (AI_ADDRCONFIG). Removing it breaks DNS resolution.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+
+# No IPAddressDeny: the agent must reach Open-Meteo, ARPAE, Telegram, and the
+# Anthropic API, all behind CDNs with variable IPs. An IP allowlist here
+# would be a trap that breaks itself after a few months.
+
+# ProtectSystem=strict makes / read-only: this is the only writable directory.
+ReadWritePaths=/var/lib/meteo-agent
+
+# On a J4125 the cycle costs a few seconds of CPU and a few dozen MB.
+# The cap is a safety net against a misbehaving feed, not a tuning target.
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target

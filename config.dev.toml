@@ -1,0 +1,96 @@
+# DEVELOPMENT configuration: identical to config.example.toml, but writes the
+# database inside the workspace instead of /var/lib. Used to try the agent
+# from VSCode on the NUC without root and without installing the service.
+#
+#   python -m meteoagent -c config.dev.toml check
+#   python -m meteoagent -c config.dev.toml stations -v
+#   python -m meteoagent -c config.dev.toml once --dry-run
+#
+# Secrets are read from ./.env (copy meteo-agent.env.example to .env).
+# Once everything is validated, switch to config.example.toml and the systemd service.
+
+interval_minutes = 15
+log_level        = "DEBUG"        # in development you want to see everything
+
+[location]
+latitude    = 44.49373453937952
+longitude   = 11.342959900671165
+elevation_m = 10
+timezone    = "Europe/Rome"
+
+[openmeteo]
+enabled       = true
+model         = "best_match"
+forecast_days = 4
+
+[arpae]
+enabled         = true
+endpoint        = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl"
+max_distance_km = 15.0
+min_confidence  = 1.0
+interval_minutes = 0            # 0 = every cycle; see config.example.toml
+# Pin it after running:  python -m meteoagent -c config.dev.toml stations -v
+# station_lon     = 1134677
+# station_lat     = 4449420
+# station_network = "simnbo"
+
+[store]
+path        = "data/meteo.db"     # relative to the workspace: no root permissions needed
+retention_h = 72
+
+[telegram]
+enabled = true
+
+[llm]
+# Keep it false until you have a key: the agent still works, notifications go
+# out with just the data and no prose. For alternative providers (e.g. GitHub
+# Models with a PAT) see [llm] in config.example.toml.
+enabled    = false
+provider   = "anthropic"
+model      = "claude-haiku-4-5-20251001"
+max_tokens = 400
+
+# --- Rules: same as config.example.toml, with low thresholds to see -----------
+# --- something trigger even on a quiet day. RETUNE THEM. ----------------------
+
+[[rules]]
+name       = "east_wind_forecast"
+title      = "Vento da E/SE in arrivo"
+source     = "forecast"
+horizon_h  = 48
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_speed_10m > 10'
+mode       = "consecutive"
+min_hours  = 2
+cooldown_h = 12
+trigger    = "edge"
+
+[[rules]]
+name       = "east_gusts_forecast"
+title      = "Raffiche forti da E/SE previste"
+source     = "forecast"
+horizon_h  = 48
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_gusts_10m > 25'
+mode       = "any"
+cooldown_h = 12
+trigger    = "edge"
+
+[[rules]]
+name       = "east_wind_ongoing"
+title      = "Vento da E/SE in corso"
+source     = "observation"
+horizon_h  = 3
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_speed_10m > 10'
+mode       = "consecutive"
+min_hours  = 1
+cooldown_h = 6
+trigger    = "edge"
+
+[[rules]]
+name       = "east_gusts_ongoing"
+title      = "Raffica forte da E/SE"
+source     = "observation"
+horizon_h  = 3
+when       = 'dir_in(wind_gusts_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_gusts_10m > 25'
+mode       = "any"
+cooldown_h = 3
+trigger    = "edge"

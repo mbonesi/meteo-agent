@@ -1,0 +1,61 @@
+{
+  // Debug configurations. All use config.dev.toml, which writes the database
+  // in ./data/: runs from the workspace without root and without touching the service.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "check (no network)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "check"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "stations -v (which ARPAE station)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "stations", "-v"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "once --dry-run (full cycle, sends nothing)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "once", "--dry-run"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "rules-test (re-evaluate on archived data)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "rules-test"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "status (what's in the db)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "status"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "run (continuous loop)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "meteoagent",
+      "args": ["-c", "config.dev.toml", "run"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

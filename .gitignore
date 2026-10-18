@@ -1,0 +1,25 @@
+# Segreti: mai in git.
+.env
+*.env
+!meteo-agent.env.example
+
+# Dati locali
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Personal local files: they contain the real location of the setup. Never publish.
+arpae-stations*.txt
+config.bologna.toml
+config.local*.toml

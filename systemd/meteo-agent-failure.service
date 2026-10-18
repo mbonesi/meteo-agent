@@ -1,0 +1,35 @@
+[Unit]
+Description=Telegram alert: meteo-agent has stopped
+Documentation=file:/opt/meteo-agent/README.md
+
+# Triggered by meteo-agent.service's OnFailure=. With Restart=always systemd
+# only starts it once it gives up restarting (StartLimitBurst exhausted), i.e.
+# when the agent is really down and nobody would notice.
+#
+# Uses curl and not the agent's Python on purpose: if what stopped it is a
+# broken venv (e.g. an Ubuntu upgrade that changes the Python version), the
+# alert must still go out. The message text stays in Italian, like every other
+# notification (see meteoagent/message.py).
+
+[Service]
+Type=oneshot
+User=meteo
+Group=meteo
+EnvironmentFile=/etc/meteo-agent/meteo-agent.env
+
+# The token reaches curl via stdin (-K -) and not on the command line, where
+# it would be visible in ps. printf is an sh builtin: it doesn't show up as a
+# process. $$ makes sh expand the variables, not systemd, which would otherwise
+# put the token in clear text in sh's arguments. %% is systemd's literal %;
+# %H is the hostname.
+ExecStart=/bin/sh -c 'printf "url = \\"https://api.telegram.org/bot%%s/sendMessage\\"\\n" "$$TELEGRAM_BOT_TOKEN" | /usr/bin/curl -sS --fail-with-body --max-time 20 --retry 5 --retry-delay 30 --retry-all-errors -K - --data-urlencode "chat_id=$$TELEGRAM_CHAT_ID" --data-urlencode "text=⚠️ meteo-agent si è fermato su %H e systemd ha smesso di riavviarlo. Niente allerte meteo finché non viene sistemato. Diagnosi: journalctl -u meteo-agent -n 50" -o /dev/null'
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK

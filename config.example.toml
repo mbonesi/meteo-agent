@@ -1,0 +1,165 @@
+# meteo-agent - configuration
+#
+# Secrets do NOT live here: tokens and API keys come from the environment
+# (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ANTHROPIC_API_KEY).
+# Verify with:  meteo-agent -c config.toml check
+
+interval_minutes = 15
+log_level        = "INFO"
+
+[location]
+latitude    = 44.49373453937952
+longitude   = 11.342959900671165
+elevation_m = 10
+timezone    = "Europe/Rome"  # used only to format messages; storage is all UTC
+
+# --------------------------------------------------------------------------
+# Sources
+# --------------------------------------------------------------------------
+
+[openmeteo]
+enabled       = true
+# "best_match" lets Open-Meteo pick the highest-resolution model for the
+# location. Around Bologna you can force "icon_d2" (2.2 km, updated every
+# 3 h, ~48 h horizon) or "icon_seamless" (D2 while available, then EU/global).
+model         = "best_match"
+forecast_days = 4               # 4 days from today's midnight cover a full 72 h from now
+
+[arpae]
+enabled  = true
+endpoint = "https://dati-simc.arpae.it/opendata/osservati/meteo/realtime/realtime.jsonl"
+
+# Station to read, in RMAP coordinates (degrees * 1e5).
+# Leaving these empty lets the agent pick the nearest usable station on its
+# own and log which one it picked: handy on the first run, but long-term you
+# want it pinned, so that if it goes offline you notice instead of silently
+# reading a different station.
+# Get the values with:  meteo-agent -c config.toml stations -v
+# station_lon     = 1134677
+# station_lat     = 4449420
+# station_network = "simnbo"
+
+max_distance_km = 15.0
+min_confidence  = 1.0           # drops data with B33007 below this threshold (0 = invalidated)
+# How many minutes between feed downloads (~8.6 MB, uncompressed). 0 = every cycle.
+# The feed keeps ~6 h of history: downloading it less often loses no data, it
+# only delays observation rules. Multiple of interval_minutes (e.g. 30 or 60).
+interval_minutes = 0
+
+[store]
+path        = "/var/lib/meteo-agent/meteo.db"
+retention_h = 72                # rolling window: observation by ts, forecast snapshots by fetched_at
+
+[telegram]
+enabled = true
+
+[llm]
+# The writer only writes the notification prose: it decides nothing. If the API
+# doesn't respond the notification still goes out, with just the data.
+# ([claude] is this section's legacy name and is still accepted.)
+# Disabled by default: notifications carry title, source and the table of
+# instants, without the prose. To enable it: true, plus the key in the secrets file.
+enabled    = false
+provider   = "anthropic"                    # "anthropic" | "openai" (OpenAI-compatible endpoint)
+model      = "claude-haiku-4-5-20251001"    # more than enough to draft two lines
+max_tokens = 400
+# api_key_env = "ANTHROPIC_API_KEY"         # NAME of the environment variable holding the key (default for anthropic)
+
+# Alternative: GitHub Models with a Personal Access Token (fine-grained, with the
+# "Models: read" permission). Put GITHUB_TOKEN=... in the secrets file and replace
+# the block above with:
+#   provider    = "openai"
+#   endpoint    = "https://models.github.ai/inference/chat/completions"
+#   model       = "openai/gpt-4.1-mini"
+#   api_key_env = "GITHUB_TOKEN"
+
+# --------------------------------------------------------------------------
+# Rules
+# --------------------------------------------------------------------------
+#
+# when       boolean expression evaluated on EVERY instant of the series.
+#            Variables: temperature_2m (°C), relative_humidity_2m (%),
+#                       precipitation (mm), pressure_msl (hPa),
+#                       wind_speed_10m (km/h), wind_direction_10m (degrees),
+#                       wind_gusts_10m (km/h), wind_gusts_direction_10m (degrees),
+#                       precipitation_sum_3h / _6h / _24h (mm),
+#                       wind_gusts_max_3h (km/h)
+#            Functions: dir_in(degrees, ["NE","E"]), dir_between(degrees, 30, 150),
+#                       sector(degrees), min, max, abs, round
+# source     "forecast" (Open-Meteo, looks ahead) | "observation" (ARPAE, looks back)
+# horizon_h  window width
+# mode       any | all | count | consecutive
+# min_hours  for count and consecutive; converted to samples on the series' actual step
+# trigger    "edge" notifies only on the false->true transition; "level" on every cycle
+# cooldown_h minimum silence between two notifications of the same rule
+
+# --- East/SE wind forecast ---------------------------------------------------
+[[rules]]
+name       = "east_wind_forecast"
+title      = "Vento da E/SE in arrivo"
+source     = "forecast"
+horizon_h  = 48
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_speed_10m > 20'
+mode       = "consecutive"
+min_hours  = 2                  # no alarms for one isolated hour of a jittery model
+cooldown_h = 12
+trigger    = "edge"
+
+# --- East/SE gusts forecast ---------------------------------------------------
+# NOTE: Open-Meteo does not forecast gust DIRECTION, only intensity.
+# Here the direction is the mean wind's, used as a proxy. The true gust
+# direction (B11043) only exists on the observation: see the rule below.
+[[rules]]
+name       = "east_gusts_forecast"
+title      = "Raffiche forti da E/SE previste"
+source     = "forecast"
+horizon_h  = 48
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_gusts_10m > 45'
+mode       = "any"
+cooldown_h = 12
+trigger    = "edge"
+
+# --- East/SE wind ongoing -----------------------------------------------------
+[[rules]]
+name       = "east_wind_ongoing"
+title      = "Vento da E/SE in corso"
+source     = "observation"
+horizon_h  = 3
+when       = 'dir_in(wind_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_speed_10m > 20'
+mode       = "consecutive"
+min_hours  = 1
+cooldown_h = 6
+trigger    = "edge"
+
+# --- East/SE gusts ongoing (true direction, B11043) ---------------------------
+[[rules]]
+name       = "east_gusts_ongoing"
+title      = "Raffica forte da E/SE"
+source     = "observation"
+horizon_h  = 3
+when       = 'dir_in(wind_gusts_direction_10m, ["NE","ENE","E","ESE","SE"]) and wind_gusts_10m > 45'
+mode       = "any"
+cooldown_h = 3
+trigger    = "edge"
+
+# --- Disabled examples, to show the other constructs -------------------------
+
+[[rules]]
+name       = "night_frost"
+title      = "Gelata prevista"
+enabled    = false
+source     = "forecast"
+horizon_h  = 48
+when       = "temperature_2m < 0"
+mode       = "any"
+cooldown_h = 18
+
+[[rules]]
+name       = "heavy_rain"
+title      = "Pioggia intensa prevista"
+enabled    = false
+source     = "forecast"
+horizon_h  = 72
+when       = "precipitation_sum_3h > 15"
+mode       = "any"
+cooldown_h = 6
