@@ -1,9 +1,9 @@
-# Segreti: mai in git.
+# Secrets: never in git.
 .env
 *.env
 !meteo-agent.env.example
 
-# Dati locali
+# Local data
 data/
 *.db
 *.db-wal
@@ -23,3 +23,6 @@ dist/
 arpae-stations*.txt
 config.bologna.toml
 config.local*.toml
+
+# Claude Code: personal local settings (permissions, local paths).
+.claude/settings.local.json
