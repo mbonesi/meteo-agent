@@ -98,6 +98,11 @@ ARPAE E-R (observation)┘                                                 │
   Retries cover GET only. Telegram POSTs retry once on `ConnectionError` in
   `telegram.send()` (stale pooled keep-alive after hours idle — this lost ~40%
   of production alerts before the fix), never on `ReadTimeout` (could duplicate).
+  The bot token is part of the Telegram URL path, and connection-phase errors
+  (urllib3 retry warnings, `MaxRetryError`) quote that path: `telegram.redact()`
+  masks it in our own log calls, and `setup_logging()` installs
+  `TokenRedactingFilter` on the root handlers so third-party records and
+  tracebacks are masked too. Never log a Telegram exception or URL unredacted.
 - **`store.py`** — SQLite persistence. Two data tables: `observation` (indexed on
   measurement `ts`, rolling window) and `forecast` (indexed on
   `(fetched_at, valid_ts)` — **every fetched snapshot is kept**, not just the

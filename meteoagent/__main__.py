@@ -36,6 +36,8 @@ def setup_logging(level: str) -> None:
     )
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    # Bot token out of the journal, whoever logs it (us or urllib3).
+    telegram.install_log_redaction()
 
 
 def load_config(args) -> config_module.Config:
